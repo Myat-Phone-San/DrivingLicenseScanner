@@ -232,7 +232,7 @@ def process_image_and_display(original_image_pil, unique_key_suffix):
 # --- Main App Body ---
 
 st.title("🪪 Myanmar License Extractor (AI OCR)")
-st.caption("Now supports **Myanmar (Burmese)** script extraction, including **မှတ်ပုံတင်အမှတ်** (NRC) via transliteration, and provides an **AI Confidence Score**.")
+
 
 # --- Tab Setup ---
 tab1, tab2 = st.tabs(["📷 Live Capture (Scanner)", "⬆️ Upload File"])
