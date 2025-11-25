@@ -239,7 +239,6 @@ def process_image_and_display(original_image_pil, unique_key_suffix):
 
 st.title("🪪 Myanmar License Extractor (AI OCR)")
 st.caption("Now supports **Myanmar (Burmese)** script extraction and provides an **AI Confidence Score** for the results.")
----
 
 # --- Tab Setup ---
 tab1, tab2 = st.tabs(["📷 Live Capture (Scanner)", "⬆️ Upload File"])
@@ -252,7 +251,7 @@ with tab1:
     st.write("Use your device's camera to scan the front of the driving license.")
     captured_file = st.camera_input("Place the license clearly in the frame and click 'Take Photo'", key="camera_input")
     
-    if captured_file is not None: # <-- This is where the colon was likely missing
+    if captured_file is not None:
         image_pil = handle_file_to_pil(captured_file)
         
         if image_pil is not None:
