@@ -5,9 +5,7 @@ from datetime import datetime
 import pandas as pd
 from io import BytesIO
 import time 
-import json # New import for parsing the model response
-
-# Removed: from dotenv import load_dotenv # 💥 Removed for st.secrets
+import json 
 
 # --- Configuration ---
 st.set_page_config(
@@ -15,32 +13,35 @@ st.set_page_config(
     layout="wide"
 )
 
-from google import genai
-from google.genai import types
-from PIL import Image
-
-# Initialize the Gemini Client
+# --- AI Client Initialization ---
+# Assuming you have the google-genai library installed: pip install google-genai
 try:
-    # 💥 CHANGE: Use st.secrets to securely load the API key
-    api_key = st.secrets["GEMINI_API_KEY"] 
+    from google import genai
+    from google.genai import types
+    from PIL import Image
+
+    # 💥 Use st.secrets to securely load the API key
+    api_key = st.secrets.get("GEMINI_API_KEY") 
+    
+    if not api_key:
+        st.error("Error: GEMINI_API_KEY not found in Streamlit Secrets. Please configure your secrets file/settings.")
+        st.stop()
+        
     client = genai.Client(api_key=api_key) # Pass the key explicitly
-except KeyError:
-    # Handle the specific error if the key is missing in the Streamlit secrets
-    st.error("Error: GEMINI_API_KEY not found in Streamlit Secrets. Please configure your secrets file/settings.")
+except ImportError:
+    st.error("Error: The 'google-genai' or 'Pillow' library is not installed. Please install them: `pip install google-genai pillow`")
     st.stop()
 except Exception as e:
-    # Original error for general initialization issues
-    st.error(f"Error initializing AI client. Please ensure your API key is valid. Details: {e}")
+    st.error(f"Error initializing AI client. Details: {e}")
     st.stop()
 
 
 # --- 2. Data Extraction Prompt and Schema (Updated for Burmese and Confidence) ---
 
-# Define the expected output structure
 extraction_schema = {
     "type": "object",
     "properties": {
-        # English/Latin Script Fields
+        # Latin Script Fields
         "license_no": {"type": "string", "description": "The driving license number, typically like 'A/123456/22'."},
         "name": {"type": "string", "description": "The full name of the license holder in Latin script."},
         "nrc_no": {"type": "string", "description": "The NRC ID number, typically like '12/MASANA(N)123456'."},
@@ -48,12 +49,12 @@ extraction_schema = {
         "blood_type": {"type": "string", "description": "The blood type, e.g., 'A+', 'B', 'O-', 'AB'."},
         "valid_up": {"type": "string", "description": "The license expiry date in DD-MM-YYYY format."},
         
-        # Burmese/Myanmar Script Fields (Added for cross-validation and display)
+        # Burmese/Myanmar Script Fields
         "name_myanmar": {"type": "string", "description": "The full name of the license holder in Myanmar script (အမည်)."},
-        "date_of_birth_myanmar": {"type": "string", "description": "The date of birth in Myanmar script (မွေးသကရာဇ်)."},
+        "date_of_birth_myanmar": {"type": "string", "description": "The date of birth in Myanmar script (မွေးသက္ကရာဇ်)."},
         "valid_up_myanmar": {"type": "string", "description": "The license expiry date in Myanmar script (ကုန်ဆုံးရက်)."},
         
-        # Confidence Score (Proxy for extraction quality)
+        # Confidence Score
         "extraction_confidence": {"type": "number", "description": "The model's self-assessed confidence score for the entire extraction, from 0.0 (low) to 1.0 (high)."}
     },
     "required": [
@@ -62,7 +63,6 @@ extraction_schema = {
     ]
 }
 
-# The main prompt for the model (Updated for Burmese and Confidence)
 EXTRACTION_PROMPT = """
 Analyze the provided image, which is a Myanmar Driving License.
 Extract ALL data fields, including both the Latin script (English) and Myanmar script (Burmese) values, and return the result strictly as a JSON object matching the provided schema.
@@ -71,7 +71,7 @@ The Burmese fields to extract are:
 - အမှတ် (License No) -> Use the Latin script for 'license_no'
 - အမည် (Name) -> Extract in Myanmar script for 'name_myanmar'
 - မှတ်ပုံတင်အမှတ် (NRC No) -> Use the Latin script for 'nrc_no'
-- မွေးသကရာဇ် (Date of Birth) -> Extract in Myanmar script for 'date_of_birth_myanmar'
+- မွေးသက္ကရာဇ် (Date of Birth) -> Extract in Myanmar script for 'date_of_birth_myanmar'
 - သွေးအုပ်စု (Blood Type) -> Use the Latin script for 'blood_type'
 - ကုန်ဆုံးရက် (Valid Up/Expiry Date) -> Extract in Myanmar script for 'valid_up_myanmar'
 
@@ -81,7 +81,7 @@ If a field is not found, return an empty string "" for that value.
 Do not include any extra text or formatting outside of the JSON object.
 """
 
-# --- 3. File Handling Function (Only PIL remains) ---
+# --- 3. File Handling Function ---
 
 def handle_file_to_pil(uploaded_file):
     """Converts uploaded file or bytes to a PIL Image object."""
@@ -114,20 +114,20 @@ def run_structured_extraction(image_pil):
             )
         )
         
-        # The response.text is a JSON string matching the schema
         structured_data = json.loads(response.text)
         return structured_data
         
     except genai.errors.APIError as e:
-        # Changed output text
         st.error(f"AI API Error: Could not process the image. Details: {e}")
         return None
+    except json.JSONDecodeError:
+        st.error("AI Response Error: Could not parse the structured JSON output. Please try a clearer image.")
+        return None
     except Exception as e:
-        # Changed output text
         st.error(f"An unexpected error occurred during AI processing: {e}")
         return None
 
-# --- 5. Helper Functions (Updated to include Burmese fields and Confidence) ---
+# --- 5. Helper Functions ---
 
 def create_downloadable_files(extracted_dict):
     """Formats the extracted data into CSV, TXT, and DOC formats."""
@@ -139,7 +139,7 @@ def create_downloadable_files(extracted_dict):
         "အမည် (Myanmar)": extracted_dict.get('name_myanmar', ''),
         "NRC No (12/...)": extracted_dict.get('nrc_no', ''),
         "Date of Birth (DD-MM-YYYY)": extracted_dict.get('date_of_birth', ''),
-        "မွေးသကရာဇ် (Myanmar)": extracted_dict.get('date_of_birth_myanmar', ''),
+        "မွေးသက္ကရာဇ် (Myanmar)": extracted_dict.get('date_of_birth_myanmar', ''),
         "Blood Type": extracted_dict.get('blood_type', ''),
         "Valid Up (DD-MM-YYYY)": extracted_dict.get('valid_up', ''),
         "ကုန်ဆုံးရက် (Myanmar)": extracted_dict.get('valid_up_myanmar', ''),
@@ -162,7 +162,7 @@ def create_downloadable_files(extracted_dict):
     return txt_content, csv_content, doc_content, results_dict
 
 
-# --- 6. UI and Execution Flow (Updated) ---
+# --- 6. UI and Execution Flow ---
 
 def process_image_and_display(original_image_pil, unique_key_suffix):
     """
@@ -177,7 +177,7 @@ def process_image_and_display(original_image_pil, unique_key_suffix):
         raw_extracted_data = run_structured_extraction(original_image_pil)
         
         if raw_extracted_data is None:
-             st.stop() 
+             return
 
         # 2. Prepare data for display/download
         txt_file, csv_file, doc_file, extracted_data = create_downloadable_files(raw_extracted_data)
@@ -189,7 +189,7 @@ def process_image_and_display(original_image_pil, unique_key_suffix):
     with col1:
         st.header("Uploaded Image")
         # Display the original PIL image directly
-        st.image(original_image_pil, use_column_width=True) # Changed to use_column_width for better fit
+        st.image(original_image_pil, use_column_width=True) 
         
     with col2:
         st.header("Extraction Results")
@@ -202,7 +202,7 @@ def process_image_and_display(original_image_pil, unique_key_suffix):
             st.text_input("အမည် (Myanmar)", value=extracted_data["အမည် (Myanmar)"])
             st.text_input("NRC No", value=extracted_data["NRC No (12/...)"])
             st.text_input("Date of Birth (Eng)", value=extracted_data["Date of Birth (DD-MM-YYYY)"])
-            st.text_input("မွေးသကရာဇ် (Myan)", value=extracted_data["မွေးသကရာဇ် (Myanmar)"])
+            st.text_input("မွေးသက္ကရာဇ် (Myan)", value=extracted_data["မွေးသက္ကရာဇ် (Myanmar)"])
             st.text_input("Blood Type", value=extracted_data["Blood Type"])
             st.text_input("Valid Up (Eng)", value=extracted_data["Valid Up (DD-MM-YYYY)"])
             st.text_input("ကုန်ဆုံးရက် (Myan)", value=extracted_data["ကုန်ဆုံးရက် (Myanmar)"])
@@ -238,6 +238,7 @@ def process_image_and_display(original_image_pil, unique_key_suffix):
 
 st.title("🪪 Myanmar License Extractor (AI OCR)")
 st.caption("Now supports **Myanmar (Burmese)** script extraction and provides an **AI Confidence Score** for the results.")
+---
 
 # --- Tab Setup ---
 tab1, tab2 = st.tabs(["📷 Live Capture (Scanner)", "⬆️ Upload File"])
