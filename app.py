@@ -13,67 +13,66 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- AI Client Initialization ---
-# Assuming you have the google-genai library installed: pip install google-genai
-try:
-    from google import genai
-    from google.genai import types
-    from PIL import Image
+from google import genai
+from google.genai import types
+from PIL import Image
 
-    # 💥 Use st.secrets to securely load the API key
-    api_key = st.secrets.get("GEMINI_API_KEY") 
-    
-    if not api_key:
-        st.error("Error: GEMINI_API_KEY not found in Streamlit Secrets. Please configure your secrets file/settings.")
-        st.stop()
-        
+# Initialize the Gemini Client
+try:
+    # 💥 CHANGE: Use st.secrets to securely load the API key
+    api_key = st.secrets["GEMINI_API_KEY"] 
     client = genai.Client(api_key=api_key) # Pass the key explicitly
-except ImportError:
-    st.error("Error: The 'google-genai' or 'Pillow' library is not installed. Please install them: `pip install google-genai pillow`")
+except KeyError:
+    # Handle the specific error if the key is missing in the Streamlit secrets
+    st.error("Error: GEMINI_API_KEY not found in Streamlit Secrets. Please configure your secrets file/settings.")
     st.stop()
 except Exception as e:
-    st.error(f"Error initializing AI client. Details: {e}")
+    # Original error for general initialization issues
+    st.error(f"Error initializing AI client. Please ensure your API key is valid. Details: {e}")
     st.stop()
 
 
-# --- 2. Data Extraction Prompt and Schema (Updated for Burmese Blood Type) ---
+# --- 2. Data Extraction Prompt and Schema (Updated for Burmese NRC and Confidence) ---
 
+# Define the expected output structure
 extraction_schema = {
     "type": "object",
     "properties": {
-        # Latin Script Fields
+        # English/Latin Script Fields
         "license_no": {"type": "string", "description": "The driving license number, typically like 'A/123456/22'."},
         "name": {"type": "string", "description": "The full name of the license holder in Latin script."},
         "nrc_no": {"type": "string", "description": "The NRC ID number, typically like '12/MASANA(N)123456'."},
         "date_of_birth": {"type": "string", "description": "The date of birth in DD-MM-YYYY format."},
-        "blood_type": {"type": "string", "description": "The blood type in Latin script, e.g., 'A+', 'B', 'O-', 'AB'."},
+        "blood_type": {"type": "string", "description": "The blood type, e.g., 'A+', 'B', 'O-', 'AB'."},
         "valid_up": {"type": "string", "description": "The license expiry date in DD-MM-YYYY format."},
         
-        # Burmese/Myanmar Script Fields (INCLUDING BLOOD TYPE)
+        # Burmese/Myanmar Script Fields (Added for cross-validation and display)
         "name_myanmar": {"type": "string", "description": "The full name of the license holder in Myanmar script (အမည်)."},
-        "date_of_birth_myanmar": {"type": "string", "description": "The date of birth in Myanmar script (မွေးသက္ကရာဇ်)."},
-        "blood_type_myanmar": {"type": "string", "description": "The blood type in Myanmar script (သွေးအုပ်စု), e.g., 'အို' (O)."},
+        "nrc_no_myanmar": {"type": "string", "description": "The NRC ID number in Myanmar script (မှတ်ပုံတင်အမှတ်)."}, 
+        "date_of_birth_myanmar": {"type": "string", "description": "The date of birth in Myanmar script (မွေးသကရာဇ်)."},
         "valid_up_myanmar": {"type": "string", "description": "The license expiry date in Myanmar script (ကုန်ဆုံးရက်)."},
         
-        # Confidence Score
+        # Confidence Score (Proxy for extraction quality)
         "extraction_confidence": {"type": "number", "description": "The model's self-assessed confidence score for the entire extraction, from 0.0 (low) to 1.0 (high)."}
     },
     "required": [
         "license_no", "name", "nrc_no", "date_of_birth", "blood_type", "valid_up",
-        "name_myanmar", "date_of_birth_myanmar", "blood_type_myanmar", "valid_up_myanmar", "extraction_confidence"
+        "name_myanmar", "nrc_no_myanmar", "date_of_birth_myanmar", "valid_up_myanmar", "extraction_confidence"
     ]
 }
 
+# The main prompt for the model (Updated for Burmese NRC and Confidence)
 EXTRACTION_PROMPT = """
 Analyze the provided image, which is a Myanmar Driving License.
 Extract ALL data fields, including both the Latin script (English) and Myanmar script (Burmese) values, and return the result strictly as a JSON object matching the provided schema.
 
-The Burmese fields to extract are:
+The Burmese fields and their extraction instructions are:
 - အမှတ် (License No) -> Use the Latin script for 'license_no'
 - အမည် (Name) -> Extract in Myanmar script for 'name_myanmar'
+- မှတ်ပုံတင်အမှတ် (NRC No) -> Extract in Myanmar script for 'nrc_no_myanmar'
 - မှတ်ပုံတင်အမှတ် (NRC No) -> Use the Latin script for 'nrc_no'
-- မွေးသက္ကရာဇ် (Date of Birth) -> Extract in Myanmar script for 'date_of_birth_myanmar'
-- သွေးအုပ်စု (Blood Type) -> Extract in Myanmar script for 'blood_type_myanmar'
+- မွေးသကရာဇ် (Date of Birth) -> Extract in Myanmar script for 'date_of_birth_myanmar'
+- သွေးအုပ်စု (Blood Type) -> Use the Latin script for 'blood_type'
 - ကုန်ဆုံးရက် (Valid Up/Expiry Date) -> Extract in Myanmar script for 'valid_up_myanmar'
 
 Ensure all Latin dates are in the DD-MM-YYYY format.
@@ -82,7 +81,7 @@ If a field is not found, return an empty string "" for that value.
 Do not include any extra text or formatting outside of the JSON object.
 """
 
-# --- 3. File Handling Function ---
+# --- 3. File Handling Function (Only PIL remains) ---
 
 def handle_file_to_pil(uploaded_file):
     """Converts uploaded file or bytes to a PIL Image object."""
@@ -120,16 +119,15 @@ def run_structured_extraction(image_pil):
         return structured_data
         
     except genai.errors.APIError as e:
+        # Changed output text
         st.error(f"AI API Error: Could not process the image. Details: {e}")
         return None
-    except json.JSONDecodeError:
-        st.error("AI Response Error: Could not parse the structured JSON output. Please try a clearer image.")
-        return None
     except Exception as e:
+        # Changed output text
         st.error(f"An unexpected error occurred during AI processing: {e}")
         return None
 
-# --- 5. Helper Functions ---
+# --- 5. Helper Functions (Updated to include Burmese NRC field and Confidence) ---
 
 def create_downloadable_files(extracted_dict):
     """Formats the extracted data into CSV, TXT, and DOC formats."""
@@ -139,11 +137,11 @@ def create_downloadable_files(extracted_dict):
         "License No (A/123.../22)": extracted_dict.get('license_no', ''),
         "Name (English)": extracted_dict.get('name', ''),
         "အမည် (Myanmar)": extracted_dict.get('name_myanmar', ''),
-        "NRC No (12/...)": extracted_dict.get('nrc_no', ''),
+        "NRC No (English/Latin)": extracted_dict.get('nrc_no', ''),
+        "မှတ်ပုံတင်အမှတ် (Myanmar)": extracted_dict.get('nrc_no_myanmar', ''), # New field
         "Date of Birth (DD-MM-YYYY)": extracted_dict.get('date_of_birth', ''),
-        "မွေးသက္ကရာဇ် (Myanmar)": extracted_dict.get('date_of_birth_myanmar', ''),
-        "Blood Type (English)": extracted_dict.get('blood_type', ''),
-        "သွေးအုပ်စု (Myanmar)": extracted_dict.get('blood_type_myanmar', ''),
+        "မွေးသကရာဇ် (Myanmar)": extracted_dict.get('date_of_birth_myanmar', ''),
+        "Blood Type": extracted_dict.get('blood_type', ''),
         "Valid Up (DD-MM-YYYY)": extracted_dict.get('valid_up', ''),
         "ကုန်ဆုံးရက် (Myanmar)": extracted_dict.get('valid_up_myanmar', ''),
         "Extraction Confidence (0.0 - 1.0)": f"{extracted_dict.get('extraction_confidence', 0.0):.2f}"
@@ -165,7 +163,7 @@ def create_downloadable_files(extracted_dict):
     return txt_content, csv_content, doc_content, results_dict
 
 
-# --- 6. UI and Execution Flow ---
+# --- 6. UI and Execution Flow (Updated for Burmese NRC) ---
 
 def process_image_and_display(original_image_pil, unique_key_suffix):
     """
@@ -180,7 +178,7 @@ def process_image_and_display(original_image_pil, unique_key_suffix):
         raw_extracted_data = run_structured_extraction(original_image_pil)
         
         if raw_extracted_data is None:
-             return
+             st.stop() 
 
         # 2. Prepare data for display/download
         txt_file, csv_file, doc_file, extracted_data = create_downloadable_files(raw_extracted_data)
@@ -192,22 +190,22 @@ def process_image_and_display(original_image_pil, unique_key_suffix):
     with col1:
         st.header("Uploaded Image")
         # Display the original PIL image directly
-        st.image(original_image_pil, use_column_width=True) 
+        st.image(original_image_pil, use_column_width=True) # Changed to use_column_width for better fit
         
     with col2:
         st.header("Extraction Results")
         
-        # --- Results Form (Updated with ALL fields) ---
+        # --- Results Form (Updated with Burmese NRC field) ---
         form_key = f"results_form_{unique_key_suffix}"
         with st.form(form_key): 
             st.text_input("License No", value=extracted_data["License No (A/123.../22)"])
             st.text_input("Name (English)", value=extracted_data["Name (English)"])
             st.text_input("အမည် (Myanmar)", value=extracted_data["အမည် (Myanmar)"])
-            st.text_input("NRC No", value=extracted_data["NRC No (12/...)"])
+            st.text_input("NRC No (English/Latin)", value=extracted_data["NRC No (English/Latin)"])
+            st.text_input("မှတ်ပုံတင်အမှတ် (Myan)", value=extracted_data["မှတ်ပုံတင်အမှတ် (Myanmar)"]) # New input
             st.text_input("Date of Birth (Eng)", value=extracted_data["Date of Birth (DD-MM-YYYY)"])
-            st.text_input("မွေးသက္ကရာဇ် (Myan)", value=extracted_data["မွေးသက္ကရာဇ် (Myanmar)"])
-            st.text_input("Blood Type (Eng)", value=extracted_data["Blood Type (English)"])
-            st.text_input("သွေးအုပ်စု (Myan)", value=extracted_data["သွေးအုပ်စု (Myanmar)"]) # <-- New Field
+            st.text_input("မွေးသကရာဇ် (Myan)", value=extracted_data["မွေးသကရာဇ် (Myanmar)"])
+            st.text_input("Blood Type", value=extracted_data["Blood Type"])
             st.text_input("Valid Up (Eng)", value=extracted_data["Valid Up (DD-MM-YYYY)"])
             st.text_input("ကုန်ဆုံးရက် (Myan)", value=extracted_data["ကုန်ဆုံးရက် (Myanmar)"])
             st.text_input("Confidence Score", value=extracted_data["Extraction Confidence (0.0 - 1.0)"])
@@ -241,7 +239,7 @@ def process_image_and_display(original_image_pil, unique_key_suffix):
 # --- Main App Body ---
 
 st.title("🪪 Myanmar License Extractor (AI OCR)")
-st.caption("Now supports **Myanmar (Burmese)** script extraction and provides an **AI Confidence Score** for the results.")
+st.caption("Now supports **Myanmar (Burmese)** script extraction, including **မှတ်ပုံတင်အမှတ်** (NRC), and provides an **AI Confidence Score**.")
 
 # --- Tab Setup ---
 tab1, tab2 = st.tabs(["📷 Live Capture (Scanner)", "⬆️ Upload File"])
