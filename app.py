@@ -114,6 +114,7 @@ def run_structured_extraction(image_pil):
             )
         )
         
+        # The response.text is a JSON string matching the schema
         structured_data = json.loads(response.text)
         return structured_data
         
@@ -251,7 +252,7 @@ with tab1:
     st.write("Use your device's camera to scan the front of the driving license.")
     captured_file = st.camera_input("Place the license clearly in the frame and click 'Take Photo'", key="camera_input")
     
-    if captured_file is not None:
+    if captured_file is not None: # <-- This is where the colon was likely missing
         image_pil = handle_file_to_pil(captured_file)
         
         if image_pil is not None:
