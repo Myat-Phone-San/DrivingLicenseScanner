@@ -36,7 +36,7 @@ except Exception as e:
     st.stop()
 
 
-# --- 2. Data Extraction Prompt and Schema (Updated for Burmese and Confidence) ---
+# --- 2. Data Extraction Prompt and Schema (Updated for Burmese Blood Type) ---
 
 extraction_schema = {
     "type": "object",
@@ -46,12 +46,13 @@ extraction_schema = {
         "name": {"type": "string", "description": "The full name of the license holder in Latin script."},
         "nrc_no": {"type": "string", "description": "The NRC ID number, typically like '12/MASANA(N)123456'."},
         "date_of_birth": {"type": "string", "description": "The date of birth in DD-MM-YYYY format."},
-        "blood_type": {"type": "string", "description": "The blood type, e.g., 'A+', 'B', 'O-', 'AB'."},
+        "blood_type": {"type": "string", "description": "The blood type in Latin script, e.g., 'A+', 'B', 'O-', 'AB'."},
         "valid_up": {"type": "string", "description": "The license expiry date in DD-MM-YYYY format."},
         
-        # Burmese/Myanmar Script Fields
+        # Burmese/Myanmar Script Fields (INCLUDING BLOOD TYPE)
         "name_myanmar": {"type": "string", "description": "The full name of the license holder in Myanmar script (အမည်)."},
         "date_of_birth_myanmar": {"type": "string", "description": "The date of birth in Myanmar script (မွေးသက္ကရာဇ်)."},
+        "blood_type_myanmar": {"type": "string", "description": "The blood type in Myanmar script (သွေးအုပ်စု), e.g., 'အို' (O)."},
         "valid_up_myanmar": {"type": "string", "description": "The license expiry date in Myanmar script (ကုန်ဆုံးရက်)."},
         
         # Confidence Score
@@ -59,7 +60,7 @@ extraction_schema = {
     },
     "required": [
         "license_no", "name", "nrc_no", "date_of_birth", "blood_type", "valid_up",
-        "name_myanmar", "date_of_birth_myanmar", "valid_up_myanmar", "extraction_confidence"
+        "name_myanmar", "date_of_birth_myanmar", "blood_type_myanmar", "valid_up_myanmar", "extraction_confidence"
     ]
 }
 
@@ -72,7 +73,7 @@ The Burmese fields to extract are:
 - အမည် (Name) -> Extract in Myanmar script for 'name_myanmar'
 - မှတ်ပုံတင်အမှတ် (NRC No) -> Use the Latin script for 'nrc_no'
 - မွေးသက္ကရာဇ် (Date of Birth) -> Extract in Myanmar script for 'date_of_birth_myanmar'
-- သွေးအုပ်စု (Blood Type) -> Use the Latin script for 'blood_type'
+- သွေးအုပ်စု (Blood Type) -> Extract in Myanmar script for 'blood_type_myanmar'
 - ကုန်ဆုံးရက် (Valid Up/Expiry Date) -> Extract in Myanmar script for 'valid_up_myanmar'
 
 Ensure all Latin dates are in the DD-MM-YYYY format.
@@ -141,7 +142,8 @@ def create_downloadable_files(extracted_dict):
         "NRC No (12/...)": extracted_dict.get('nrc_no', ''),
         "Date of Birth (DD-MM-YYYY)": extracted_dict.get('date_of_birth', ''),
         "မွေးသက္ကရာဇ် (Myanmar)": extracted_dict.get('date_of_birth_myanmar', ''),
-        "Blood Type": extracted_dict.get('blood_type', ''),
+        "Blood Type (English)": extracted_dict.get('blood_type', ''),
+        "သွေးအုပ်စု (Myanmar)": extracted_dict.get('blood_type_myanmar', ''),
         "Valid Up (DD-MM-YYYY)": extracted_dict.get('valid_up', ''),
         "ကုန်ဆုံးရက် (Myanmar)": extracted_dict.get('valid_up_myanmar', ''),
         "Extraction Confidence (0.0 - 1.0)": f"{extracted_dict.get('extraction_confidence', 0.0):.2f}"
@@ -195,7 +197,7 @@ def process_image_and_display(original_image_pil, unique_key_suffix):
     with col2:
         st.header("Extraction Results")
         
-        # --- Results Form (Updated with Burmese fields) ---
+        # --- Results Form (Updated with ALL fields) ---
         form_key = f"results_form_{unique_key_suffix}"
         with st.form(form_key): 
             st.text_input("License No", value=extracted_data["License No (A/123.../22)"])
@@ -204,7 +206,8 @@ def process_image_and_display(original_image_pil, unique_key_suffix):
             st.text_input("NRC No", value=extracted_data["NRC No (12/...)"])
             st.text_input("Date of Birth (Eng)", value=extracted_data["Date of Birth (DD-MM-YYYY)"])
             st.text_input("မွေးသက္ကရာဇ် (Myan)", value=extracted_data["မွေးသက္ကရာဇ် (Myanmar)"])
-            st.text_input("Blood Type", value=extracted_data["Blood Type"])
+            st.text_input("Blood Type (Eng)", value=extracted_data["Blood Type (English)"])
+            st.text_input("သွေးအုပ်စု (Myan)", value=extracted_data["သွေးအုပ်စု (Myanmar)"]) # <-- New Field
             st.text_input("Valid Up (Eng)", value=extracted_data["Valid Up (DD-MM-YYYY)"])
             st.text_input("ကုန်ဆုံးရက် (Myan)", value=extracted_data["ကုန်ဆုံးရက် (Myanmar)"])
             st.text_input("Confidence Score", value=extracted_data["Extraction Confidence (0.0 - 1.0)"])
